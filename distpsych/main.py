@@ -1,3 +1,5 @@
+import os
+import pickle
 import threading
 import time
 import tkinter.filedialog
@@ -116,7 +118,6 @@ def create_provider_location_dict(df: pd.DataFrame):
     for provider_name, provider_data in provider_locations.items():
         if not any(provider_data.values()):
             logger.warning(f"Provider {provider_name} is missing a location.")
-    logger.info(provider_locations)
     return provider_locations
 
 
@@ -216,18 +217,38 @@ def add_districts_to_clients(df: pd.DataFrame) -> pd.DataFrame:
         A pandas DataFrame with a new 'USER_DISTRICT' column containing the school district for each client.
     """
     df["USER_DISTRICT"] = None
+    cache_file = "district_cache.pickle"
+
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "rb") as f:
+                district_cache = pickle.load(f)
+        except (pickle.PickleError, EOFError):
+            logger.warning("Error loading district cache, creating a new one")
+            district_cache = {}
+    else:
+        district_cache = {}
 
     for index, row in df.iterrows():
         street_address = str(row["USER_ADDRESS_ADDRESS1"])
         city_name = str(row["USER_ADDRESS_CITY"])
         state_name = str(row["USER_ADDRESS_STATE"])
         zip = str(row["USER_ADDRESS_ZIP"])
+        address_key = f"{street_address}|{city_name}|{state_name}|{zip}"
 
-        district = get_district(
-            street=street_address, city=city_name, state=state_name, zip=zip
-        )
+        if address_key in district_cache:
+            df.loc[index, "USER_DISTRICT"] = district_cache[address_key]
+            logger.info(f"District found in cache: {district_cache[address_key]}")
+        else:
+            district = get_district(
+                street=street_address, city=city_name, state=state_name, zip=zip
+            )
+            if district != "Not found":
+                district_cache[address_key] = district
+            df.loc[index, "USER_DISTRICT"] = district
 
-        df.loc[index, "USER_DISTRICT"] = district
+    with open(cache_file, "wb") as f:
+        pickle.dump(district_cache, f)
 
     return df
 
