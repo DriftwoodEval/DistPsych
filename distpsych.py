@@ -516,8 +516,11 @@ def assign_providers_to_clients(
 
             match_reason = None
 
-            # Check if provider serves different district
-            if provider_data.district != client_district:
+            # Check if provider works day job in different district
+            if (
+                client_district != "Not found"
+                and provider_data.district != client_district
+            ):
                 match_reason = "Different district"
 
             # Check if client's ZIP is in provider's can_serve list
