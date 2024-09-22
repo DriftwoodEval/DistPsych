@@ -24,7 +24,8 @@ jobs:
 
       - name: Build windows .exe
         run: |
-          uvx pyinstaller --noconfirm --onefile --windowed --clean --name "DistPsych" "distpsych.py"
+          uv add pyinstaller
+          pyinstaller --noconfirm --onefile --windowed --clean --name "DistPsych" "distpsych.py"
 
       - uses: actions/upload-artifact@v4
         with:
