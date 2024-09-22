@@ -1,0 +1,51 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install the project
+        run: uv sync --all-extras --dev
+
+      - name: Build windows .exe
+        run: |
+          uvx pyinstaller --noconfirm --onefile --windowed --clean --name "DistPsych" "distpsych.py"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distpsych.exe
+          path: dist/distpsych.exe
+          if-no-files-found: error
+  publish:
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: distpsych.exe
+          path: ./
+      - name: Generate release timestamp
+        id: timestamp
+        run: echo "timestamp=$(date +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: "./distpsych.exe"
+          tag_name: "v${{ steps.timestamp.outputs.timestamp }}"
