@@ -129,14 +129,22 @@ def get_district(street: str, city: str, state: str, zip: str) -> str:
 
 
 def search_district(url: str, params: dict) -> str:
-    """Search for district with given parameters, retry without ZIP if failed."""
+    """Search for district with given parameters, retry without ZIP if failed, then without city."""
     district = get_district_from_response(url, params)
     if district != "Not found":
         return district
 
     logging.warning("Search failed, attempting again without a ZIP code...")
-    params.pop("zip")
-    return get_district_from_response(url, params)
+    params_without_zip = params.copy()
+    params_without_zip.pop("zip")
+    district = get_district_from_response(url, params_without_zip)
+    if district != "Not found":
+        return district
+
+    logging.warning("Search failed again, attempting with ZIP but without city...")
+    params_without_city = params.copy()
+    params_without_city.pop("city")
+    return get_district_from_response(url, params_without_city)
 
 
 def get_district_from_response(url: str, params: dict) -> str:
