@@ -577,7 +577,7 @@ def load_csv(file_path):
 
         # Read CSV file with detected encoding
         df = read_csv(file_path, encoding=detected_encoding)
-        logging.info(f"Successfully loaded {file_path} with {len(df)} rows.")
+        # logging.info(f"Successfully loaded {file_path} with {len(df)} rows.")
         return df
 
     except UnicodeDecodeError as e:
@@ -642,8 +642,20 @@ class App(customtkinter.CTk):
         self.provider_sheet = None
         self.insurance_sheet = None
 
+        self.DEM_EXPECTED_COLUMNS = [
+            "CLIENT_ID",
+            "STATUS",
+            "LASTNAME",
+            "FIRSTNAME",
+            "USER_ADDRESS_ADDRESS1",
+            "USER_ADDRESS_CITY",
+            "USER_ADDRESS_STATE",
+            "USER_ADDRESS_ZIP",
+        ]
+        self.INSURANCE_EXPECTED_COLUMNS = ["CLIENT_ID", "INSURANCE_COMPANYNAME"]
+
         self.title("DistPsych")
-        self.geometry("600x600")
+        self.geometry("700x700")
         self.grid_columnconfigure((0, 1, 2), weight=1)
         self.grid_rowconfigure(3, weight=1)  # Make the log frame row expandable
 
@@ -653,12 +665,14 @@ class App(customtkinter.CTk):
         self.dem_sheet_button.grid(row=0, column=0, padx=5, pady=10)
 
         self.provider_sheet_button = customtkinter.CTkButton(
-            self, text="Select Provider Sheet", command=self.get_provider_sheet
+            self, text="Select Excluded Areas Sheet", command=self.get_provider_sheet
         )
         self.provider_sheet_button.grid(row=0, column=1, padx=5, pady=10)
 
         self.insurance_sheet_button = customtkinter.CTkButton(
-            self, text="Select Insurance Sheet", command=self.get_insurance_sheet
+            self,
+            text="Select Insurance Policies and Benefits Sheet",
+            command=self.get_insurance_sheet,
         )
         self.insurance_sheet_button.grid(row=0, column=2, padx=5, pady=10)
 
@@ -699,30 +713,68 @@ class App(customtkinter.CTk):
         # Set up custom logger
         setup_logger(gui_mode=True, text_widget=self.log_text)
 
+    def check_file_columns(self, df, expected_columns, file_type):
+        missing_columns = [col for col in expected_columns if col not in df.columns]
+        if missing_columns:
+            logging.error(
+                f"{file_type} file is missing expected columns: {', '.join(missing_columns)}"
+            )
+            return False
+        return True
+
     def get_dem_sheet(self):
         file = pick_file()
         if file:
-            self.dem_sheet = load_csv(file)
-            self.dem_sheet_button.configure(text=truncate_text(file.split("/")[-1]))
-            self.check_process_button_state()
+            df = load_csv(file)
+            if df is not None and self.check_file_columns(
+                df, self.DEM_EXPECTED_COLUMNS, "Demographics"
+            ):
+                self.dem_sheet = df
+                self.dem_sheet_button.configure(text=truncate_text(file.split("/")[-1]))
+                self.check_process_button_state()
+            else:
+                self.dem_sheet = None
+                self.dem_sheet_button.configure(text="Select Demographics Sheet")
+
+    def check_provider_file(self, df):
+        if "Unnamed: 0" in df.columns:
+            if "Excluded Areas" in df["Unnamed: 0"].values:
+                return True
+        logging.error("Error: Provider file is missing the 'Excluded Areas' row")
+        return False
 
     def get_provider_sheet(self):
         file = pick_file()
         if file:
-            self.provider_sheet = load_csv(file)
-            self.provider_sheet_button.configure(
-                text=truncate_text(file.split("/")[-1])
-            )
-            self.check_process_button_state()
+            df = load_csv(file)
+            if df is not None and self.check_provider_file(df):
+                self.provider_sheet = df
+                self.provider_sheet_button.configure(
+                    text=truncate_text(file.split("/")[-1])
+                )
+                self.check_process_button_state()
+            else:
+                self.provider_sheet = None
+                self.provider_sheet_button.configure(text="Select Excluded Areas Sheet")
 
     def get_insurance_sheet(self):
         file = pick_file()
         if file:
-            self.insurance_sheet = load_csv(file)
-            self.insurance_sheet_button.configure(
-                text=truncate_text(file.split("/")[-1])
-            )
-            self.check_process_button_state()
+            if file:
+                df = load_csv(file)
+                if df is not None and self.check_file_columns(
+                    df, self.INSURANCE_EXPECTED_COLUMNS, "Insurance"
+                ):
+                    self.insurance_sheet = df
+                    self.insurance_sheet_button.configure(
+                        text=truncate_text(file.split("/")[-1])
+                    )
+                    self.check_process_button_state()
+                else:
+                    self.insurance_sheet = None
+                    self.insurance_sheet_button.configure(
+                        text="Select Insurance Policies and Benefits Sheet"
+                    )
 
     def process_sheet(self):
         # Create a new thread for the processing
