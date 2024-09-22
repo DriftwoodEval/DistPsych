@@ -552,6 +552,12 @@ def load_csv(file_path):
 
 def process_data(dem_sheet, provider_sheet, insurance_sheet):
     logging.info("Starting data processing...")
+    global global_district_count
+    global_district_count = 0
+    global global_insurance_count
+    global_insurance_count = 0
+    update_district_count_callback()
+    update_insurance_count_callback()
     trimmed_clients = extract_client_data(dem_sheet)
     clients_with_districts = add_districts_to_clients(pd.DataFrame(trimmed_clients))
     clients_with_districts_and_insurance = match_client_ids_and_add_insurance(
