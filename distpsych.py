@@ -15,9 +15,9 @@ import requests
 
 @dataclass
 class ProviderData:
-    district: str
-    can_serve: List[str]
-    cannot_serve: List[str]
+    district: str | None = None
+    can_serve: List[str] | None = None
+    cannot_serve: List[str] | None = None
 
 
 class TextHandler(logging.Handler):
@@ -182,7 +182,7 @@ def create_provider_location_dict(df: pd.DataFrame) -> Dict[str, ProviderData]:
         location = df.iloc[
             location_index, i + 2
         ]  # i + 2 accounts for the extra beggining columns
-        provider_data = ProviderData(district=None, can_serve=[], cannot_serve=[])
+        provider_data = ProviderData()
 
         if pd.notna(location):
             provider_data.district = normalize_district_name(location)
