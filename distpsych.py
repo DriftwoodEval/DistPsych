@@ -579,8 +579,8 @@ def save_results_to_csv(result_df):
     # Rename all "Unnamed" columns to "" (blank)
     unnamed_columns = result_df.columns[result_df.columns.str.contains("Unnamed")]
     result_df = result_df.rename(columns={col: "" for col in unnamed_columns})
-    # Remove ".1" suffix from duplicate column names
-    result_df.columns = result_df.columns.str.replace(r"\.1$", "", regex=True)
+    # Remove all digit suffixes from duplicate column names
+    result_df.columns = result_df.columns.str.replace(r"\.\d+$", "", regex=True)
     result_df.to_csv("RESULTS.csv", index=False)
     logging.info(f"Results saved to RESULTS.csv with {len(result_df)} rows.")
 
