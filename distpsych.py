@@ -226,10 +226,12 @@ def normalize_district_name(location: str) -> str:
         if old in location:
             location = location.replace(old, new)
             logging.debug(f"Normalized district name: {location}")
+            return location
 
     if "county" not in location.lower() and "school" not in location.lower():
         location = f"{location.title()} County School District"
         logging.debug(f"Normalized district name: {location}")
+        return location
 
     logging.warning(f"Unrecognized district format: {location}")
     return location
@@ -754,7 +756,7 @@ class App(customtkinter.CTk):
         )
 
 
-global_gui_mode = True
+global_gui_mode = False
 
 
 def main():
@@ -762,7 +764,6 @@ def main():
     global global_gui_mode
     if args.dem and args.provider and args.insurance:
         # Command-line mode
-        global_gui_mode = False
         setup_logger(gui_mode=False)
         logging.info("Starting in command-line mode.")
         dem_sheet = load_csv(args.dem)
@@ -781,6 +782,7 @@ def main():
             )
     else:
         # GUI mode
+        global_gui_mode = True
         logging.info("Starting in GUI mode.")
         app = App()
         app.mainloop()
