@@ -3,14 +3,15 @@ import logging
 import os
 import pickle
 import threading
-import tkinter.filedialog
 from dataclasses import dataclass
+from tkinter import filedialog
 from typing import Dict, List, cast
 
-import chardet
 import customtkinter
-import pandas as pd
 import requests
+from chardet import detect
+from pandas import DataFrame, notna, read_csv
+from pandas import errors as pandas_errors
 
 
 @dataclass
@@ -156,7 +157,7 @@ def get_district_from_response(url: str, params: dict) -> str:
 
 
 def pick_file():
-    file = tkinter.filedialog.askopenfilename()
+    file = filedialog.askopenfilename()
     if file:
         logging.info(f"File selected: {file}")
     else:
@@ -164,12 +165,12 @@ def pick_file():
     return file
 
 
-def create_provider_location_dict(df: pd.DataFrame) -> Dict[str, ProviderData]:
+def create_provider_location_dict(df: DataFrame) -> Dict[str, ProviderData]:
     """
     Create a dictionary of provider locations from a DataFrame.
 
     Args:
-        df (pd.DataFrame): Input DataFrame containing provider information.
+        df (DataFrame): Input DataFrame containing provider information.
 
     Returns:
         Dict[str, ProviderData]: Dictionary of provider names mapped to their location data.
@@ -185,7 +186,7 @@ def create_provider_location_dict(df: pd.DataFrame) -> Dict[str, ProviderData]:
         ]  # i + 2 accounts for the extra beggining columns
         provider_data = ProviderData()
 
-        if pd.notna(location):
+        if notna(location):
             provider_data.district = normalize_district_name(location)
 
         for row_index in range(df.shape[0]):
@@ -249,7 +250,7 @@ def extract_zip_codes(cell_value: str, prefix: str) -> List[str]:
     return zip_codes
 
 
-def get_provider_insurance(df: pd.DataFrame) -> dict:
+def get_provider_insurance(df: DataFrame) -> dict:
     """
     Extracts provider insurance information from a DataFrame.
 
@@ -287,7 +288,7 @@ def get_provider_insurance(df: pd.DataFrame) -> dict:
 
         for j, provider_name in enumerate(provider_names):
             cell_value = row.iloc[j + 2]
-            if pd.notna(cell_value) and (cell_value == "X"):
+            if notna(cell_value) and (cell_value == "X"):
                 if provider_name not in provider_insurance:
                     provider_insurance[provider_name] = []
                 provider_insurance[provider_name].append(insurance_name)
@@ -301,15 +302,15 @@ def get_provider_insurance(df: pd.DataFrame) -> dict:
 global_active_client_count = 0
 
 
-def extract_client_data(df: pd.DataFrame) -> pd.DataFrame:
+def extract_client_data(df: DataFrame) -> DataFrame:
     """
     Extracts relevant client data from a DataFrame.
 
     Args:
-        df (pd.DataFrame): A pandas DataFrame containing client information.
+        df (DataFrame): A pandas DataFrame containing client information.
 
     Returns:
-        pd.DataFrame: A new DataFrame containing only active clients and selected columns.
+        DataFrame: A new DataFrame containing only active clients and selected columns.
     """
     logging.info("Extracting client data...")
     # Filter out inactive clients
@@ -327,7 +328,7 @@ def extract_client_data(df: pd.DataFrame) -> pd.DataFrame:
     ]
 
     # Extract only the selected columns
-    extracted_df = cast(pd.DataFrame, active_clients[selected_columns])
+    extracted_df = cast(DataFrame, active_clients[selected_columns])
     global global_active_client_count
     global_active_client_count = len(extracted_df)
 
@@ -335,7 +336,7 @@ def extract_client_data(df: pd.DataFrame) -> pd.DataFrame:
     return extracted_df
 
 
-def add_districts_to_clients(df: pd.DataFrame) -> pd.DataFrame:
+def add_districts_to_clients(df: DataFrame) -> DataFrame:
     """
     Adds a 'USER_DISTRICT' column to a DataFrame containing client data,
     using the get_district function to determine the school district based on address.
@@ -414,17 +415,17 @@ def update_insurance_count_callback():
 
 
 def match_client_ids_and_add_insurance(
-    client_df: pd.DataFrame, insurance_df: pd.DataFrame
-) -> pd.DataFrame:
+    client_df: DataFrame, insurance_df: DataFrame
+) -> DataFrame:
     """
     Matches client IDs between two DataFrames and adds the insurance company name to the client DataFrame.
 
     Args:
-        client_df (pd.DataFrame): DataFrame containing client information, including CLIENT_ID.
-        insurance_df (pd.DataFrame): DataFrame containing insurance information, including CLIENT_ID and INSURANCE_COMPANYNAME.
+        client_df (DataFrame): DataFrame containing client information, including CLIENT_ID.
+        insurance_df (DataFrame): DataFrame containing insurance information, including CLIENT_ID and INSURANCE_COMPANYNAME.
 
     Returns:
-        pd.DataFrame: The client DataFrame with a new column 'INSURANCE_COMPANYNAME'.
+        DataFrame: The client DataFrame with a new column 'INSURANCE_COMPANYNAME'.
     """
     logging.info("Matching client IDs and adding insurance information...")
     cache_file = "insurance_cache.pickle"
@@ -476,21 +477,21 @@ def update_provider_count_callback():
 
 
 def assign_providers_to_clients(
-    client_df: pd.DataFrame,
+    client_df: DataFrame,
     provider_locations: Dict[str, ProviderData],
     provider_insurance: dict,
-) -> pd.DataFrame:
+) -> DataFrame:
     """
     Assigns providers to clients based on their location and providers' location.
     Places an 'X' in the client's DataFrame for each provider that can serve them.
 
     Args:
-        client_df (pd.DataFrame): DataFrame containing client information, including USER_DISTRICT.
+        client_df (DataFrame): DataFrame containing client information, including USER_DISTRICT.
         provider_locations (dict): Dictionary mapping provider names to their districts.
         provider_insurance (dict): Dictionary mapping provider names to their accepted insurance.
 
     Returns:
-        pd.DataFrame: The client DataFrame with 'X's in the provider columns for clients
+        DataFrame: The client DataFrame with 'X's in the provider columns for clients
         that can be served by that provider.
     """
     logging.info("Assigning providers to clients...")
@@ -561,16 +562,16 @@ def load_csv(file_path):
             raw_data = file.read()
 
         # Detect file encoding
-        detected_encoding = chardet.detect(raw_data)["encoding"]
+        detected_encoding = detect(raw_data)["encoding"]
 
         # Read CSV file with detected encoding
-        df = pd.read_csv(file_path, encoding=detected_encoding)
+        df = read_csv(file_path, encoding=detected_encoding)
         logging.info(f"Successfully loaded {file_path} with {len(df)} rows.")
         return df
 
     except UnicodeDecodeError as e:
         logging.error(f"Error decoding file: {e}")
-    except pd.errors.EmptyDataError as e:
+    except pandas_errors.EmptyDataError as e:
         logging.error(f"Error reading file, may be empty or corrupt: {e}")
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
@@ -590,7 +591,7 @@ def process_data(dem_sheet, provider_sheet, insurance_sheet):
     update_insurance_count_callback()
     update_provider_count_callback()
     trimmed_clients = extract_client_data(dem_sheet)
-    clients_with_districts = add_districts_to_clients(pd.DataFrame(trimmed_clients))
+    clients_with_districts = add_districts_to_clients(DataFrame(trimmed_clients))
     clients_with_districts_and_insurance = match_client_ids_and_add_insurance(
         clients_with_districts, insurance_sheet
     )
