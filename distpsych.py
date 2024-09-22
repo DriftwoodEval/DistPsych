@@ -221,16 +221,17 @@ def normalize_district_name(location: str) -> str:
     Returns:
         str: The normalized district name.
     """
-    replacements = {
-        "DD4": "Dorchester District 4",
-        "Berkeley": "Berkeley County School District",
-        "Georgetown": "Georgetown County School District",
-        "Horry": "Horry County School District",
-        "Charleston": "Charleston County School District",
-    }
+    replacements = {"DD4": "Dorchester District 4", "DD2": "Dorchester District 2"}
     for old, new in replacements.items():
-        location = location.replace(old, new)
-    logging.debug(f"Normalized district name: {location}")
+        if old in location:
+            location = location.replace(old, new)
+            logging.debug(f"Normalized district name: {location}")
+
+    if "county" not in location.lower() and "school" not in location.lower():
+        location = f"{location.title()} County School District"
+        logging.debug(f"Normalized district name: {location}")
+
+    logging.warning(f"Unrecognized district format: {location}")
     return location
 
 
