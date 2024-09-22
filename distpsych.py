@@ -454,6 +454,20 @@ def match_client_ids_and_add_insurance(
     return client_df
 
 
+global_provider_count = 0
+
+
+def update_provider_count_callback():
+    global global_provider_count
+    if App.instance:
+        App.instance.after(
+            0,
+            App.instance.update_provider_count,
+            global_provider_count,
+            global_active_client_count,
+        )
+
+
 def assign_providers_to_clients(
     client_df: pd.DataFrame,
     provider_locations: Dict[str, ProviderData],
@@ -477,10 +491,14 @@ def assign_providers_to_clients(
     for provider_name in provider_locations.keys():
         client_df[provider_name] = None
 
+    global global_provider_count
+
     for index, row in client_df.iterrows():
         client_district = row["USER_DISTRICT"]
         client_zip = row["USER_ADDRESS_ZIP"]
         client_insurance = row["INSURANCE_COMPANYNAME"]
+        global_provider_count += 1
+        update_provider_count_callback()
 
         for provider_name, provider_data in provider_locations.items():
             if provider_name not in provider_insurance:
@@ -556,8 +574,11 @@ def process_data(dem_sheet, provider_sheet, insurance_sheet):
     global_district_count = 0
     global global_insurance_count
     global_insurance_count = 0
+    global global_provider_count
+    global_provider_count = 0
     update_district_count_callback()
     update_insurance_count_callback()
+    update_provider_count_callback()
     trimmed_clients = extract_client_data(dem_sheet)
     clients_with_districts = add_districts_to_clients(pd.DataFrame(trimmed_clients))
     clients_with_districts_and_insurance = match_client_ids_and_add_insurance(
@@ -585,6 +606,12 @@ def save_results_to_csv(result_df):
     logging.info(f"Results saved to RESULTS.csv with {len(result_df)} rows.")
 
 
+def truncate_text(text, max_length=20):
+    if len(text) > max_length:
+        return text[: max_length - 3] + "..."
+    return text
+
+
 class App(customtkinter.CTk):
     def __init__(self):
         super().__init__()
@@ -594,52 +621,50 @@ class App(customtkinter.CTk):
         self.insurance_sheet = None
 
         self.title("DistPsych")
-        self.geometry("500x450")
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(5, weight=1)  # Make the log frame row expandable
+        self.geometry("600x600")
+        self.grid_columnconfigure((0, 1, 2), weight=1)
+        self.grid_rowconfigure(3, weight=1)  # Make the log frame row expandable
 
         self.dem_sheet_button = customtkinter.CTkButton(
             self, text="Select Demographics Sheet", command=self.get_dem_sheet
         )
-        self.dem_sheet_button.grid(
-            row=0, column=0, columnspan=2, padx=20, pady=10, sticky="ew"
-        )
+        self.dem_sheet_button.grid(row=0, column=0, padx=5, pady=10)
 
         self.provider_sheet_button = customtkinter.CTkButton(
             self, text="Select Provider Sheet", command=self.get_provider_sheet
         )
-        self.provider_sheet_button.grid(
-            row=1, column=0, columnspan=2, padx=20, pady=10, sticky="ew"
-        )
+        self.provider_sheet_button.grid(row=0, column=1, padx=5, pady=10)
 
         self.insurance_sheet_button = customtkinter.CTkButton(
             self, text="Select Insurance Sheet", command=self.get_insurance_sheet
         )
-        self.insurance_sheet_button.grid(
-            row=2, column=0, columnspan=2, padx=20, pady=10, sticky="ew"
-        )
+        self.insurance_sheet_button.grid(row=0, column=2, padx=5, pady=10)
 
         self.process_button = customtkinter.CTkButton(
             self, text="Process!", command=self.process_sheet, state="disabled"
         )
         self.process_button.grid(
-            row=3, column=0, columnspan=2, padx=20, pady=10, sticky="ew"
+            row=1, column=0, columnspan=3, padx=20, pady=10, sticky="ew"
         )
 
         self.district_count_label = customtkinter.CTkLabel(
             self, text="Districts searched: 0"
         )
-        self.district_count_label.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
+        self.district_count_label.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
 
         self.insurance_count_label = customtkinter.CTkLabel(
-            self, text="Insurance matched: 0"
+            self, text="Insurance attempted: 0"
         )
-        self.insurance_count_label.grid(row=4, column=1, padx=20, pady=10, sticky="ew")
+        self.insurance_count_label.grid(row=2, column=1, padx=20, pady=10, sticky="ew")
+
+        self.provider_count_label = customtkinter.CTkLabel(
+            self, text="Clients attempted: 0"
+        )
+        self.provider_count_label.grid(row=2, column=2, padx=20, pady=10, sticky="ew")
 
         self.log_frame = customtkinter.CTkFrame(self)
         self.log_frame.grid(
-            row=5, column=0, columnspan=2, padx=20, pady=10, sticky="nsew"
+            row=3, column=0, columnspan=3, padx=20, pady=10, sticky="nsew"
         )  # Changed to "nsew" to expand in all directions
 
         self.log_text = customtkinter.CTkTextbox(
@@ -656,21 +681,25 @@ class App(customtkinter.CTk):
         file = pick_file()
         if file:
             self.dem_sheet = load_csv(file)
-            self.dem_sheet_button.configure(text=file.split("/")[-1])
+            self.dem_sheet_button.configure(text=truncate_text(file.split("/")[-1]))
             self.check_process_button_state()
 
     def get_provider_sheet(self):
         file = pick_file()
         if file:
             self.provider_sheet = load_csv(file)
-            self.provider_sheet_button.configure(text=file.split("/")[-1])
+            self.provider_sheet_button.configure(
+                text=truncate_text(file.split("/")[-1])
+            )
             self.check_process_button_state()
 
     def get_insurance_sheet(self):
         file = pick_file()
         if file:
             self.insurance_sheet = load_csv(file)
-            self.insurance_sheet_button.configure(text=file.split("/")[-1])
+            self.insurance_sheet_button.configure(
+                text=truncate_text(file.split("/")[-1])
+            )
             self.check_process_button_state()
 
     def process_sheet(self):
@@ -704,7 +733,12 @@ class App(customtkinter.CTk):
 
     def update_insurance_count(self, count, client_count):
         self.insurance_count_label.configure(
-            text=f"Insurance matched: {count}/{client_count}"
+            text=f"Insurance attempted: {count}/{client_count}"
+        )
+
+    def update_provider_count(self, count, client_count):
+        self.provider_count_label.configure(
+            text=f"Clients attempted: {count}/{client_count}"
         )
 
 
