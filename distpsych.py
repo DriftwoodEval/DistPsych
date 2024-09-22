@@ -5,7 +5,7 @@ import pickle
 import threading
 import tkinter.filedialog
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, cast
 
 import chardet
 import customtkinter
@@ -89,7 +89,8 @@ global_district_count = 0
 
 def update_district_count_callback():
     global global_district_count
-    if App.instance:
+    global global_gui_mode
+    if global_gui_mode and App.instance:
         App.instance.after(
             0,
             App.instance.update_district_count,
@@ -191,10 +192,14 @@ def create_provider_location_dict(df: pd.DataFrame) -> Dict[str, ProviderData]:
             cell_value = df.iloc[row_index, i + 2]
             if isinstance(cell_value, str):
                 if "CANNOT" in cell_value:
+                    if provider_data.cannot_serve is None:
+                        provider_data.cannot_serve = []
                     provider_data.cannot_serve.extend(
                         extract_zip_codes(cell_value, "CANNOT")
                     )
                 elif "CAN" in cell_value:
+                    if provider_data.can_serve is None:
+                        provider_data.can_serve = []
                     provider_data.can_serve.extend(extract_zip_codes(cell_value, "CAN"))
 
         provider_locations[provider_name] = provider_data
@@ -276,13 +281,13 @@ def get_provider_insurance(df: pd.DataFrame) -> dict:
         if row["Unnamed: 0"] == "Excluded Areas":
             break
 
-        insurance_name = row["Unnamed: 0"]
+        insurance_name = str(row["Unnamed: 0"])
         for replacement, full_name in insurance_replacements.items():
             insurance_name = insurance_name.replace(replacement, full_name)
 
         for j, provider_name in enumerate(provider_names):
             cell_value = row.iloc[j + 2]
-            if pd.notna(cell_value) and (cell_value == "X" or cell_value.isdigit()):
+            if pd.notna(cell_value) and (cell_value == "X"):
                 if provider_name not in provider_insurance:
                     provider_insurance[provider_name] = []
                 provider_insurance[provider_name].append(insurance_name)
@@ -322,7 +327,7 @@ def extract_client_data(df: pd.DataFrame) -> pd.DataFrame:
     ]
 
     # Extract only the selected columns
-    extracted_df = active_clients[selected_columns]
+    extracted_df = cast(pd.DataFrame, active_clients[selected_columns])
     global global_active_client_count
     global_active_client_count = len(extracted_df)
 
@@ -398,7 +403,8 @@ global_insurance_count = 0
 
 def update_insurance_count_callback():
     global global_insurance_count
-    if App.instance:
+    global global_gui_mode
+    if global_gui_mode and App.instance:
         App.instance.after(
             0,
             App.instance.update_insurance_count,
@@ -459,7 +465,8 @@ global_provider_count = 0
 
 def update_provider_count_callback():
     global global_provider_count
-    if App.instance:
+    global global_gui_mode
+    if global_gui_mode and App.instance:
         App.instance.after(
             0,
             App.instance.update_provider_count,
@@ -514,7 +521,7 @@ def assign_providers_to_clients(
                 match_reason = "Different district"
 
             # Check if client's ZIP is in provider's can_serve list
-            elif client_zip in provider_data.can_serve:
+            elif provider_data.can_serve and client_zip in provider_data.can_serve:
                 match_reason = "ZIP in can_serve list"
 
             # Check if client's ZIP is not in provider's cannot_serve list
@@ -592,7 +599,7 @@ def process_data(dem_sheet, provider_sheet, insurance_sheet):
         provider_insurance,
     )
     save_results_to_csv(result_df)
-    logging.info("Data processing completed successfully!")
+    logging.info("*** DONE! ***")
 
 
 def save_results_to_csv(result_df):
@@ -742,11 +749,15 @@ class App(customtkinter.CTk):
         )
 
 
+global_gui_mode = True
+
+
 def main():
     args = parse_args()
-
+    global global_gui_mode
     if args.dem and args.provider and args.insurance:
         # Command-line mode
+        global_gui_mode = False
         setup_logger(gui_mode=False)
         logging.info("Starting in command-line mode.")
         dem_sheet = load_csv(args.dem)
