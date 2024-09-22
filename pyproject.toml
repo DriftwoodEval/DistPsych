@@ -5,6 +5,7 @@ description = "A tool for matching psychology clients with providers based on lo
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "argparse>=1.4.0",
     "chardet>=5.2.0",
     "customtkinter>=5.2.2",
     "logzero>=1.7.0",
