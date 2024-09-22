@@ -84,6 +84,20 @@ def setup_logger(gui_mode=False, text_widget=None):
     logging.info("Logger setup complete.")
 
 
+global_district_count = 0
+
+
+def update_district_count_callback():
+    global global_district_count
+    if App.instance:
+        App.instance.after(
+            0,
+            App.instance.update_district_count,
+            global_district_count,
+            global_active_client_count,
+        )
+
+
 def get_district(street: str, city: str, state: str, zip: str) -> str:
     """Get the school district from a street address using the U.S. Census Bureau's API."""
     url = "https://geocoding.geo.census.gov/geocoder/geographies/address"
@@ -279,6 +293,9 @@ def get_provider_insurance(df: pd.DataFrame) -> dict:
     return provider_insurance
 
 
+global_active_client_count = 0
+
+
 def extract_client_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Extracts relevant client data from a DataFrame.
@@ -292,7 +309,6 @@ def extract_client_data(df: pd.DataFrame) -> pd.DataFrame:
     logging.info("Extracting client data...")
     # Filter out inactive clients
     active_clients = df[df["STATUS"] != "Inactive"]
-
     # Define columns to keep
     selected_columns = [
         "CLIENT_ID",
@@ -307,6 +323,8 @@ def extract_client_data(df: pd.DataFrame) -> pd.DataFrame:
 
     # Extract only the selected columns
     extracted_df = active_clients[selected_columns]
+    global global_active_client_count
+    global_active_client_count = len(extracted_df)
 
     logging.info(f"Extracted data for {len(extracted_df)} active clients.")
     return extracted_df
@@ -355,6 +373,9 @@ def create_address_key(row):
 
 
 def get_district_from_cache_or_api(address_key, district_cache):
+    global global_district_count
+    global_district_count += 1
+    update_district_count_callback()
     if address_key in district_cache:
         district = district_cache[address_key]
         logging.info(f"District found in cache: {district}")
@@ -372,6 +393,20 @@ def save_district_cache(cache_file, district_cache):
     logging.info(f"Saved district cache with {len(district_cache)} entries.")
 
 
+global_insurance_count = 0
+
+
+def update_insurance_count_callback():
+    global global_insurance_count
+    if App.instance:
+        App.instance.after(
+            0,
+            App.instance.update_insurance_count,
+            global_insurance_count,
+            global_active_client_count,
+        )
+
+
 def match_client_ids_and_add_insurance(
     client_df: pd.DataFrame, insurance_df: pd.DataFrame
 ) -> pd.DataFrame:
@@ -386,19 +421,34 @@ def match_client_ids_and_add_insurance(
         pd.DataFrame: The client DataFrame with a new column 'INSURANCE_COMPANYNAME'.
     """
     logging.info("Matching client IDs and adding insurance information...")
-    # Create a dictionary mapping CLIENT_ID to INSURANCE_COMPANYNAME
-    insurance_mapping = dict(
-        zip(insurance_df["CLIENT_ID"], insurance_df["INSURANCE_COMPANYNAME"])
-    )
+    cache_file = "insurance_cache.pickle"
+    global global_insurance_count
 
-    # Function to safely retrieve insurance company from the mapping
-    def get_insurance_company(client_id):
-        return insurance_mapping.get(client_id, "None found")
+    # Try to load the cache
+    try:
+        with open(cache_file, "rb") as f:
+            insurance_mapping = pickle.load(f)
+        logging.info(f"Loaded insurance cache with {len(insurance_mapping)} entries.")
+    except (FileNotFoundError, pickle.UnpicklingError):
+        # If cache doesn't exist or is corrupted, create a new mapping
+        insurance_mapping = dict(
+            zip(insurance_df["CLIENT_ID"], insurance_df["INSURANCE_COMPANYNAME"])
+        )
+        logging.info("Created new insurance cache.")
 
-    # Add 'INSURANCE_COMPANYNAME' column to client DataFrame
-    client_df["INSURANCE_COMPANYNAME"] = client_df["CLIENT_ID"].map(
-        get_insurance_company
-    )
+    # Add 'INSURANCE_COMPANYNAME' column to client DataFrame using the mapping
+    for index, row in client_df.iterrows():
+        global_insurance_count += 1
+        update_insurance_count_callback()
+        client_id = row["CLIENT_ID"]
+        insurance = insurance_mapping.get(client_id, "None found")
+        client_df.at[index, "INSURANCE_COMPANYNAME"] = insurance
+        logging.info(f"Client {client_id} - {insurance}")
+
+    # Save the updated mapping to cache
+    with open(cache_file, "wb") as f:
+        pickle.dump(insurance_mapping, f)
+    logging.info(f"Saved insurance cache with {len(insurance_mapping)} entries.")
 
     logging.info(f"Added insurance information to {len(client_df)} clients.")
     return client_df
@@ -532,38 +582,58 @@ def save_results_to_csv(result_df):
 class App(customtkinter.CTk):
     def __init__(self):
         super().__init__()
+        App.instance = self
         self.dem_sheet = None
         self.provider_sheet = None
         self.insurance_sheet = None
 
         self.title("DistPsych")
-        self.geometry("500x400")
+        self.geometry("500x450")
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(4, weight=1)  # Make the log frame row expandable
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(5, weight=1)  # Make the log frame row expandable
 
         self.dem_sheet_button = customtkinter.CTkButton(
             self, text="Select Demographics Sheet", command=self.get_dem_sheet
         )
-        self.dem_sheet_button.grid(row=0, column=0, padx=20, pady=10, sticky="ew")
+        self.dem_sheet_button.grid(
+            row=0, column=0, columnspan=2, padx=20, pady=10, sticky="ew"
+        )
 
         self.provider_sheet_button = customtkinter.CTkButton(
             self, text="Select Provider Sheet", command=self.get_provider_sheet
         )
-        self.provider_sheet_button.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
+        self.provider_sheet_button.grid(
+            row=1, column=0, columnspan=2, padx=20, pady=10, sticky="ew"
+        )
 
         self.insurance_sheet_button = customtkinter.CTkButton(
             self, text="Select Insurance Sheet", command=self.get_insurance_sheet
         )
-        self.insurance_sheet_button.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
+        self.insurance_sheet_button.grid(
+            row=2, column=0, columnspan=2, padx=20, pady=10, sticky="ew"
+        )
 
         self.process_button = customtkinter.CTkButton(
             self, text="Process!", command=self.process_sheet, state="disabled"
         )
-        self.process_button.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
+        self.process_button.grid(
+            row=3, column=0, columnspan=2, padx=20, pady=10, sticky="ew"
+        )
+
+        self.district_count_label = customtkinter.CTkLabel(
+            self, text="Districts searched: 0"
+        )
+        self.district_count_label.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
+
+        self.insurance_count_label = customtkinter.CTkLabel(
+            self, text="Insurance matched: 0"
+        )
+        self.insurance_count_label.grid(row=4, column=1, padx=20, pady=10, sticky="ew")
 
         self.log_frame = customtkinter.CTkFrame(self)
         self.log_frame.grid(
-            row=4, column=0, padx=20, pady=10, sticky="nsew"
+            row=5, column=0, columnspan=2, padx=20, pady=10, sticky="nsew"
         )  # Changed to "nsew" to expand in all directions
 
         self.log_text = customtkinter.CTkTextbox(
@@ -620,6 +690,16 @@ class App(customtkinter.CTk):
             logging.info("All sheets loaded. Ready to process.")
         else:
             self.process_button.configure(state="disabled")
+
+    def update_district_count(self, count, client_count):
+        self.district_count_label.configure(
+            text=f"Districts searched: {count}/{client_count}"
+        )
+
+    def update_insurance_count(self, count, client_count):
+        self.insurance_count_label.configure(
+            text=f"Insurance matched: {count}/{client_count}"
+        )
 
 
 def main():
