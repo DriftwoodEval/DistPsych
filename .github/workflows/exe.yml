@@ -24,7 +24,7 @@ jobs:
 
       - name: Build windows .exe
         run: |
-          uv add pyinstaller
+          source .venv/bin/activate
           pyinstaller --noconfirm --onefile --windowed --clean --name "DistPsych" "distpsych.py"
 
       - uses: actions/upload-artifact@v4
